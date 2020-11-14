@@ -88,6 +88,7 @@ class MarketDataApp(EClient, EWrapper):
         if not os.path.exists(self.logfile_orders):
             self._write_csv_row((logfile_orders_rows,), self.logfile_orders, newfile=True)
 
+        self.candle_calc_use_prev_ha = True
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
         self.period = args.bar_period
         self.order_type = args.order_type
@@ -132,7 +133,7 @@ class MarketDataApp(EClient, EWrapper):
         if not self.debug_mode:
             # Connect to server and start feeds
             self._connect()
-            self._cancel_orders(cycle_all=False)
+            self._cancel_orders()
             self._subscribe_mktData()
             self._subscribe_rtBars()
         else:
@@ -229,7 +230,7 @@ class MarketDataApp(EClient, EWrapper):
     def _run(self):
         self.run()
 
-    def _cancel_orders(self, cycle_all=True):
+    def _cancel_orders(self, cycle_all=False):
         # 2 methods below for canceling orders
 
         if cycle_all:
@@ -320,7 +321,7 @@ class MarketDataApp(EClient, EWrapper):
         else:
             raise ValueError
 
-    def _calc_new_candle(self, use_prev_ha=False):
+    def _calc_new_candle(self):
         ohlc = (
             self.cache[0][1],
             max([u[2] for u in self.cache]),
@@ -330,7 +331,7 @@ class MarketDataApp(EClient, EWrapper):
         if self.candles.shape[0] > 0:
             # Can only calc heikin-ashi if we have previous data
             ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            if use_prev_ha:
+            if self.candle_calc_use_prev_ha:
                 if self.candles.shape[0] == 1:
                     # No prior HA candle is available, use prev raw candle open/close
                     ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
