@@ -1,3 +1,6 @@
+# app logfiles
+logs/
+
 # Macos
 *.DS_Store
 

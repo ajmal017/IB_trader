@@ -85,11 +85,16 @@ class MarketDataApp(EClient, EWrapper):
             os.makedirs('logs')
         if not os.path.exists(self.logfile_candles):
             self._write_csv_row((logfile_candles_rows,), self.logfile_candles, newfile=True)
+        else:
+            self._write_csv_row((('', '', '', '', '', '', '', '', '', '', ''),), self.logfile_candles)
         if not os.path.exists(self.logfile_orders):
             self._write_csv_row((logfile_orders_rows,), self.logfile_orders, newfile=True)
+        else:
+            self._write_csv_row((('', '', '', '', '', '', ''),), self.logfile_orders,)
 
         self.candle_calc_use_prev_ha = True
         self.RT_BAR_PERIOD = MarketDataApp.RT_BAR_PERIOD
+        self.RT_BAR_DATA_TYPE = 'MIDPOINT' # MIDPOINT/TRADES/BID/ASK
         self.period = args.bar_period
         self.order_type = args.order_type
         self.order_size = args.order_size
@@ -263,7 +268,7 @@ class MarketDataApp(EClient, EWrapper):
             self.rtBars_reqId,
             self.contract,
             self.RT_BAR_PERIOD,
-            "MIDPOINT", False, [])
+            self.RT_BAR_DATA_TYPE, False, [])
 
     def _on_update(self):
         # Process 5s updates as received
@@ -302,15 +307,19 @@ class MarketDataApp(EClient, EWrapper):
             self.candles = self.candles.append(_pd, ignore_index=True)
             #
             bar_color = None
-            bar_color_prev = None
-            if self.candles.shape[0] > 1:
+#            bar_color_prev = None
+#            if self.candles.shape[0] > 1:
+            if isinstance(self.candles['ha_color'].values[-1], str):
+                # Check it is not an indecision candle
                 bar_color = self.candles['ha_color'].values[-1].upper()
 #            else:
 #                # First HA candle not yet available
 #                return
-            if self.candles.shape[0] > 2:
-                bar_color_prev = self.candles['ha_color'].values[-2].upper()
-            self.logger.warning(f'Candle: {self.cache[-1][0]}, {self.args.symbol} - {bar_color}, Prev: {bar_color_prev}')
+#            if self.candles.shape[0] > 2:
+#                if isinstance(self.candles['ha_color'].values[-2], str):
+#                    # Check it is not an indecision candle
+#                    bar_color_prev = self.candles['ha_color'].values[-2].upper()
+            self.logger.warning(f'Candle: {self.cache[-1][0]}, {self.args.symbol} - {bar_color}')
             csv_row = [col[1] for col in _pd.items()]
             csv_row.insert(1, self.args.symbol)
             self._write_csv_row((csv_row,), self.logfile_candles)
@@ -328,29 +337,29 @@ class MarketDataApp(EClient, EWrapper):
             self.cache[-1][4]
         )
         ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-        if self.candles.shape[0] > 0:
-            # Can only calc heikin-ashi if we have previous data
-#            ha_c = (ohlc[0] + ohlc[1] + ohlc[2] + ohlc[3])/4
-            if self.candle_calc_use_prev_ha:
-                if self.candles.shape[0] == 1:
-                    # No prior HA candle is available, use prev raw candle open/close
-                    ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
-                else:
-                    ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
+        if self.candle_calc_use_prev_ha:
+            if self.candles.shape[0] == 0:
+                # No prior HA candle is available, use prev raw candle open/close
+                #ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+                ha_o = (ohlc[0] + ohlc[3])/2
+                ha_h = ohlc[1]
+                ha_l = ohlc[2]
             else:
-                ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
+                ha_o = (self.candles['ha_open'].values[-1] + self.candles['ha_close'].values[-1])/2
+                ha_h = max(ohlc[1], ha_o, ha_c)
+                ha_l = min(ohlc[2], ha_o, ha_c)
+        else:
+            ha_o = (self.candles['open'].values[-1] + self.candles['close'].values[-1])/2
             ha_h = max(ohlc[1], ha_o, ha_c)
             ha_l = min(ohlc[2], ha_o, ha_c)
-            if ha_c > ha_o:
-                ha_color = 'Green'
-            elif ha_c < ha_o:
-                ha_color = 'Red'
-            else:
-                # Indecision candle
-                ha_color = None
-            ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
+        if ha_c > ha_o:
+            ha_color = 'Green'
+        elif ha_c < ha_o:
+            ha_color = 'Red'
         else:
-            ha_ochl = (None, ha_c, None, None, None)
+            # Indecision candle
+            ha_color = None
+        ha_ochl = (ha_o, ha_c, ha_h, ha_l, ha_color)
         _pd = {
             'time': self._tohlc[0] ,
             'open': ohlc[0],
